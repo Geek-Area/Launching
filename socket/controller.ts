@@ -19,6 +19,34 @@ const COLORS = ['#FF0055', '#00FF99', '#00CCFF', '#FFAA00', '#CC00FF', '#FFFF00'
 
 const getRandomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
 
+const evaluateGameState = (io: Server) => {
+    const userList = Object.values(users);
+
+    // If no users, reset to LOBBY
+    if (userList.length === 0) {
+        if (gameState.status !== 'LOBBY') {
+            gameState.status = 'LOBBY';
+            io.emit('game_state', gameState);
+        }
+        return;
+    }
+
+    const allReady = userList.every(u => u.ready);
+
+    if (allReady && gameState.status !== 'LAUNCHED') {
+        // All users ready -> LAUNCH
+        gameState.status = 'LAUNCHED';
+        gameState.launchTime = Date.now();
+        io.emit('game_state', gameState);
+        console.log('ROCKET LAUNCHED!');
+    } else if (!allReady && gameState.status === 'LAUNCHED') {
+        // Not all ready (e.g. new user joined) -> RESET to LOBBY
+        gameState.status = 'LOBBY';
+        io.emit('game_state', gameState);
+        console.log('Launch aborted / Reset to Lobby');
+    }
+};
+
 export const setupSocketHandlers = (io: Server) => {
     io.on('connection', (socket: Socket) => {
         console.log(`User connected: ${socket.id}`);
@@ -36,28 +64,22 @@ export const setupSocketHandlers = (io: Server) => {
             };
 
             io.emit('update_users', Object.values(users));
+            evaluateGameState(io); // Check if this new unready user affects state
         });
 
         socket.on('ready', () => {
             if (users[socket.id]) {
                 users[socket.id].ready = true;
                 io.emit('update_users', Object.values(users));
-
-                // Check if all users are ready (simple logic for now)
-                // In the final app, maybe we want 'launch_signal' to be the trigger users do together
+                evaluateGameState(io);
             }
         });
 
         socket.on('launch_signal', () => {
-            // This will be triggered when users click the button?
-            // Or is it a collective thing?
-            // Per request: "svi zajedno treba da kliknemo dugme"
-
             if (users[socket.id]) {
-                users[socket.id].ready = true; // "Clicking" means ready/acting
+                users[socket.id].ready = true;
                 io.emit('update_users', Object.values(users));
-
-                checkWinCondition(io);
+                evaluateGameState(io);
             }
         });
 
@@ -65,34 +87,7 @@ export const setupSocketHandlers = (io: Server) => {
             console.log(`User disconnected: ${socket.id}`);
             delete users[socket.id];
             io.emit('update_users', Object.values(users));
-
-            // If empty, reset game maybe?
-            if (Object.keys(users).length === 0) {
-                gameState.status = 'LOBBY';
-            }
+            evaluateGameState(io); // Check if leaving user affects state
         });
     });
-};
-
-const checkWinCondition = (io: Server) => {
-    const userList = Object.values(users);
-    if (userList.length === 0) return;
-
-    const allReady = userList.every(u => u.ready);
-
-    if (allReady && gameState.status !== 'LAUNCHED') {
-        gameState.status = 'LAUNCHED';
-        gameState.launchTime = Date.now();
-        io.emit('game_state', gameState);
-        console.log('ROCKET LAUNCHED!');
-
-        // Reset after 10 seconds?
-        // Reset logic removed per request. Game stays in 'LAUNCHED' state until server restart.
-        // setTimeout(() => {
-        //     gameState.status = 'LOBBY';
-        //     userList.forEach(u => u.ready = false);
-        //     io.emit('game_state', gameState);
-        //     io.emit('update_users', Object.values(users));
-        // }, 10000);
-    }
 };
