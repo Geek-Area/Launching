@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    container_name: launching-2026
+    build: .
+    ports:
+      - "3000:3000"
+    restart: always
+    environment:
+      - NODE_ENV=production
+    # If you want to persist logs or other data, add volumes here
+    # volumes:
+    #   - ./logs:/app/logs
